@@ -1,0 +1,41 @@
+### ==========================================================================
+### Coleção de requisições — API de Consulta de Saldo
+### Compatível com IntelliJ IDEA / VSCode (REST Client) e exportável para Postman.
+### ==========================================================================
+
+### 1. Consulta de saldo (200 OK)
+# Substitua pelo UUID de uma conta existente (ex.: extraído do SQS)
+GET http://localhost:8080/api/v1/balances/5b19c8b6-0cc4-4c72-a989-0c2ee15fa975
+Accept: application/json
+
+### 2. Conta inexistente (404)
+GET http://localhost:8080/api/v1/balances/00000000-0000-0000-0000-000000000001
+Accept: application/json
+
+### 3. UUID inválido (400)
+GET http://localhost:8080/api/v1/balances/nao-e-um-uuid
+Accept: application/json
+
+### 4. Health check (200 — "UP")
+GET http://localhost:8080/actuator/health
+Accept: application/json
+
+### 5. Métricas Prometheus
+GET http://localhost:8080/actuator/prometheus
+Accept: text/plain
+
+### 6. Documentação OpenAPI (JSON)
+GET http://localhost:8080/v3/api-docs
+Accept: application/json
+
+### 7. Swagger UI
+GET http://localhost:8080/swagger-ui.html
+
+### 8. Health check do ingestor
+GET http://localhost:8082/actuator/health
+Accept: application/json
+
+### 9. Inspecionar mensagens da fila SQS (Localstack) via AWS CLI
+# aws --endpoint-url http://localhost:4566 --region sa-east-1 sqs receive-message \
+#     --queue-url http://localhost:4566/000000000000/transacoes-financeiras-processadas \
+#     --max-number-of-messages 10

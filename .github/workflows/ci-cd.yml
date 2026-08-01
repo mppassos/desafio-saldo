@@ -1,0 +1,113 @@
+# ============================================================================
+# CI/CD Pipeline — API de Consulta de Saldo
+#
+# CI:
+#   build            -> compila o projeto multi-módulo
+#   unit-tests       -> testes unitários (tags JUnit @Tag("unit"))
+#   integration-tests-> testes de integração com Testcontainers (rodam em
+#                       runner Ubuntu, que tem Docker nativo)
+#
+# CD (proposta Blue/Green):
+#   deploy           -> só no push para main, após CI verde.
+#                       Publica imagem no ECR e dispara CodeDeploy (Blue/Green)
+#                       com tráfego gradual e rollback automático.
+# ============================================================================
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  build:
+    name: Build (multi-módulo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+      - name: Build com Maven
+        run: mvn -B clean package -DskipTests
+
+  unit-tests:
+    name: Testes unitários
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+      - name: Rodar testes unitários
+        run: mvn -B test -Dgroups=unit
+
+  integration-tests:
+    name: Testes de integração (Testcontainers)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+      - name: Rodar testes de integração
+        run: mvn -B test -Dgroups=integration
+        env:
+          # Runner do GitHub Actions já expõe o Docker; variável mantida
+          # explicitamente para clareza/debug (ajustável em outros runners).
+          DOCKER_HOST: unix:///var/run/docker.sock
+
+  deploy:
+    name: Deploy Blue/Green (proposta)
+    runs-on: ubuntu-latest
+    needs: [build, unit-tests, integration-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: sa-east-1
+
+      - name: Build e push da imagem (ECR)
+        run: |
+          echo "==> Login no ECR..."
+          # aws ecr get-login-password | docker login --username AWS --password-stdin $ECR_REGISTRY
+          echo "==> Build da imagem 'api'..."
+          # docker build -t $ECR_REGISTRY/$ECR_REPO:${GITHUB_SHA::7} .
+          echo "==> Push..."
+          # docker push $ECR_REGISTRY/$ECR_REPO:${GITHUB_SHA::7}
+
+      - name: Deploy Blue/Green com CodeDeploy
+        run: |
+          echo "==> Criando revisão no CodeDeploy (deployment group Blue/Green)..."
+          # aws deploy create-deployment \
+          #   --application-name saldo-app \
+          #   --deployment-group-name saldo-bg \
+          #   --revision revisionType=S3,s3Location={bucket=...,key=appspec.yml}
+          echo "==> Monitorando o deployment (health checks do Green)..."
+          # aws deploy get-deployment --deployment-id $DEPLOYMENT_ID --query 'deploymentInfo.status'
+          echo "==> Se os health checks falharem, o CodeDeploy reverte automaticamente
+                   para o ambiente Blue (rollback) e o pipeline é marcado como falho."
+
+      - name: Notificar falha
+        if: failure()
+        run: |
+          echo "Deploy falhou — rollback automático (Blue/Green) disparado."
+          # curl -X POST $SLACK_WEBHOOK -d '{"text":"Deploy falhou: verificar rollback"}' || true

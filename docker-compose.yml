@@ -1,0 +1,123 @@
+services:
+  localstack:
+    image: localstack/localstack:3.7.2
+    hostname: localstack
+    container_name: localstack
+    environment:
+      - AWS_DEFAULT_REGION=sa-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - SERVICES=sqs
+      - SKIP_SSL_CERT_DOWNLOAD=1
+      - DISABLE_EVENTS=1
+    ports:
+      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:4510-4559:4510-4559"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  message-generator:
+    image: golang:1.24.3
+    container_name: message-generator
+    depends_on:
+      localstack:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      - QUEUE_NAME=transacoes-financeiras-processadas
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+      - TOTAL_TRANSACTIONS=300000
+      - TOTAL_ACCOUNTS=10000
+      - MIN_TRANSACTION_AMOUNT=0
+      - MAX_TRANSACTION_AMOUNT=100
+      - GOPROXY=https://proxy.golang.org
+      - GOSUMDB=sum.golang.org
+    command: >
+      /bin/sh -c "
+        openssl s_client -showcerts -connect proxy.golang.org:443 </dev/null 2>/dev/null |
+          awk '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/ { print \$0 }' > /usr/local/share/ca-certificates/ca_bundle.crt &&
+        update-ca-certificates &&
+        rm -rf /tmp/go && mkdir -p /tmp/go && cd /tmp/go &&
+        echo "cGFja2FnZSBtYWluCgppbXBvcnQgKAoJImNvbnRleHQiCgkiZm10IgoJImxvZyIKCSJtYXRoL3JhbmQiCgkibmV0L3VybCIKCSJ0aW1lIgoKCSJvcyIKCSJzdHJjb252IgoKCSJnaXRodWIuY29tL2F3cy9hd3Mtc2RrLWdvLXYyL2F3cyIKCSJnaXRodWIuY29tL2F3cy9hd3Mtc2RrLWdvLXYyL2NvbmZpZyIKCSJnaXRodWIuY29tL2F3cy9hd3Mtc2RrLWdvLXYyL2NyZWRlbnRpYWxzIgoJImdpdGh1Yi5jb20vYXdzL2F3cy1zZGstZ28tdjIvc2VydmljZS9zcXMiCgkiZ2l0aHViLmNvbS9hd3MvYXdzLXNkay1nby12Mi9zZXJ2aWNlL3Nxcy90eXBlcyIKCSJnaXRodWIuY29tL2F3cy9zbWl0aHktZ28iCglzbWl0aHllbmRwb2ludHMgImdpdGh1Yi5jb20vYXdzL3NtaXRoeS1nby9lbmRwb2ludHMiCgkiZ2l0aHViLmNvbS9nb29nbGUvdXVpZCIKKQoKLy8gLS0tIFNZTlRIRVRJQyBUUkFOU0FDVElPTlMgUEFSQU1FVEVSUyAtLS0KdmFyICgKCXRvdGFsTWVzc2FnZXMgICAgICAgID0gZ2V0RW52SW50KCJUT1RBTF9UUkFOU0FDVElPTlMiLCAxMDAwMDApCglhY2NvdW50Q291bnQgICAgICAgICA9IGdldEVudkludCgiVE9UQUxfQUNDT1VOVFMiLCAxMDAwKQoJbWluVHJhbnNhY3Rpb25BbW91bnQgPSBnZXRFbnZJbnQoIk1JTl9UUkFOU0FDVElPTl9BTU9VTlQiLCAwKQoJbWF4VHJhbnNhY3Rpb25BbW91bnQgPSBnZXRFbnZJbnQoIk1BWF9UUkFOU0FDVElPTl9BTU9VTlQiLCAxMDApCgljdXJyZW5jeSAgICAgICAgICAgICA9ICJCUkwiCikKCnZhciAoCglhY2NvdW50U3RhdHVzZXMgID0gW11zdHJpbmd7IkVOQUJMRUQifQoJdHJhbnNhY3Rpb25UeXBlcyA9IFtdc3RyaW5neyJDUkVESVQiLCAiREVCSVQifQopCgovLyAtLS0gQVdTIFBBUkFNRVRFUlMgLS0tCmNvbnN0ICgKCWF3c1JlZ2lvbiAgICAgICA9ICJzYS1lYXN0LTEiCglhd3NBY2Nlc3NLZXkgICAgPSAidGVzdCIKCWF3c1NlY3JldEtleSAgICA9ICJ0ZXN0IgoJYXdzU2Vzc2lvblRva2VuID0gInRlc3QiCikKCi8vIC0tLSBTUVMgUEFSQU1FVEVSUyAtLS0KdmFyICgKCXF1ZXVlTmFtZSAgICAgICAgICA9IGdldEVudlN0cigiUVVFVUVfTkFNRSIsICJ0cmFuc2Fjb2VzLWZpbmFuY2VpcmFzLXByb2Nlc3NhZGFzIikKCWxvY2Fsc3RhY2tFbmRwb2ludCA9IGdldEVudlN0cigiTE9DQUxTVEFDS19FTkRQT0lOVCIsICJodHRwOi8vbG9jYWxob3N0OjQ1NjYiKQoJYmF0Y2hTaXplICAgICAgICAgID0gMTAKCWNvbnRlbnRUeXBlS2V5ICAgICA9ICJDb250ZW50VHlwZSIKCWNvbnRlbnRUeXBlVmFsICAgICA9ICJhcHBsaWNhdGlvbi9qc29uIgopCgp0eXBlIFRyYW5zYWN0aW9uIHN0cnVjdCB7CglUcmFuc2FjdGlvbklEICBzdHJpbmcKCVR5cGUgICAgICAgICAgIHN0cmluZwoJQW1vdW50ICAgICAgICAgZmxvYXQ2NAoJQ3VycmVuY3kgICAgICAgc3RyaW5nCglTdGF0dXMgICAgICAgICBzdHJpbmcKCUFjY291bnRJRCAgICAgIHN0cmluZwoJT3duZXJJRCAgICAgICAgc3RyaW5nCglDcmVhdGVkQXQgICAgICBpbnQ2NAoJQWNjb3VudFN0YXR1cyAgc3RyaW5nCglBY2NvdW50QmFsYW5jZSBmbG9hdDY0CglUaW1lc3RhbXAgICAgICBpbnQ2NAp9CgpmdW5jIGdldEVudlN0cihrZXksIGZhbGxiYWNrIHN0cmluZykgc3RyaW5nIHsKCWlmIHYgOj0gb3MuR2V0ZW52KGtleSk7IHYgIT0gIiIgewoJCXJldHVybiB2Cgl9CglyZXR1cm4gZmFsbGJhY2sKfQoKZnVuYyBnZXRFbnZJbnQoa2V5IHN0cmluZywgZmFsbGJhY2sgaW50KSBpbnQgewoJaWYgdiA6PSBvcy5HZXRlbnYoa2V5KTsgdiAhPSAiIiB7CgkJaWYgaSwgZXJyIDo9IHN0cmNvbnYuQXRvaSh2KTsgZXJyID09IG5pbCB7CgkJCXJldHVybiBpCgkJfQoJfQoJcmV0dXJuIGZhbGxiYWNrCn0KCmZ1bmMgc2V0dXBTUVMoY3R4IGNvbnRleHQuQ29udGV4dCkgKCpzcXMuQ2xpZW50LCBzdHJpbmcpIHsKCWNmZywgZXJyIDo9IGNvbmZpZy5Mb2FkRGVmYXVsdENvbmZpZyhjdHgsCgkJY29uZmlnLldpdGhSZWdpb24oYXdzUmVnaW9uKSwKCQljb25maWcuV2l0aENyZWRlbnRpYWxzUHJvdmlkZXIoYXdzLk5ld0NyZWRlbnRpYWxzQ2FjaGUoCgkJCWNyZWRlbnRpYWxzLk5ld1N0YXRpY0NyZWRlbnRpYWxzUHJvdmlkZXIoYXdzQWNjZXNzS2V5LCBhd3NTZWNyZXRLZXksIGF3c1Nlc3Npb25Ub2tlbikpKSwKCSkKCWlmIGVyciAhPSBuaWwgewoJCWxvZy5GYXRhbGYoIltFUlJPUl0gRmFpbGVkIHRvIGxvYWQgQVdTIGNvbmZpZzogJXYiLCBlcnIpCgl9CgoJc3FzQ2xpZW50IDo9IHNxcy5OZXdGcm9tQ29uZmlnKGNmZywgZnVuYyhvICpzcXMuT3B0aW9ucykgewoJCW8uRW5kcG9pbnRSZXNvbHZlclYyID0gJmN1c3RvbVNRU0VuZHBvaW50UmVzb2x2ZXJ7fQoJfSkKCglnZXRRdWV1ZVVybE91dCwgZXJyIDo9IHNxc0NsaWVudC5HZXRRdWV1ZVVybChjdHgsICZzcXMuR2V0UXVldWVVcmxJbnB1dHsKCQlRdWV1ZU5hbWU6IGF3cy5TdHJpbmcocXVldWVOYW1lKSwKCX0pCglpZiBlcnIgPT0gbmlsIHsKCQlyZXR1cm4gc3FzQ2xpZW50LCAqZ2V0UXVldWVVcmxPdXQuUXVldWVVcmwKCX0KCglsb2cuUHJpbnRmKCJbV0FSTl0gUXVldWUgbm90IGZvdW5kLCBjcmVhdGluZzogJXMiLCBxdWV1ZU5hbWUpCgljcmVhdGVPdXQsIGNyZWF0ZUVyciA6PSBzcXNDbGllbnQuQ3JlYXRlUXVldWUoY3R4LCAmc3FzLkNyZWF0ZVF1ZXVlSW5wdXR7CgkJUXVldWVOYW1lOiBhd3MuU3RyaW5nKHF1ZXVlTmFtZSksCgl9KQoJaWYgY3JlYXRlRXJyICE9IG5pbCB7CgkJbG9nLkZhdGFsZigiW0VSUk9SXSBGYWlsZWQgdG8gY3JlYXRlIFNRUyBxdWV1ZTogJXYiLCBjcmVhdGVFcnIpCgl9CglyZXR1cm4gc3FzQ2xpZW50LCAqY3JlYXRlT3V0LlF1ZXVlVXJsCn0KCnR5cGUgQWNjb3VudEluZm8gc3RydWN0IHsKCUlEICAgICAgICBzdHJpbmcKCU93bmVySUQgICBzdHJpbmcKCUNyZWF0ZWRBdCBpbnQ2NAoJQmFsYW5jZSAgIGZsb2F0NjQKfQoKZnVuYyBnZW5lcmF0ZUFjY291bnRzKCkgKFtdQWNjb3VudEluZm8sIG1hcFtzdHJpbmddZmxvYXQ2NCkgewoJbm93IDo9IHRpbWUuTm93KCkuVW5peCgpCglmaXZlWWVhcnNBZ28gOj0gbm93IC0gNSozNjUqMjQqNjAqNjAKCWFjY291bnRzIDo9IG1ha2UoW11BY2NvdW50SW5mbywgYWNjb3VudENvdW50KQoJYmFsYW5jZXMgOj0gbWFrZShtYXBbc3RyaW5nXWZsb2F0NjQsIGFjY291bnRDb3VudCkKCWZvciBpIDo9IHJhbmdlIGFjY291bnRzIHsKCQlpZCA6PSB1dWlkLk5ldygpLlN0cmluZygpCgkJYWNjb3VudHNbaV0gPSBBY2NvdW50SW5mb3sKCQkJSUQ6ICAgICAgICBpZCwKCQkJT3duZXJJRDogICB1dWlkLk5ldygpLlN0cmluZygpLAoJCQlDcmVhdGVkQXQ6IHJhbmQuSW50NjNuKG5vdy1maXZlWWVhcnNBZ28rMSkgKyBmaXZlWWVhcnNBZ28sCgkJfQoJCWJhbGFuY2VzW2lkXSA9IDAKCX0KCXJldHVybiBhY2NvdW50cywgYmFsYW5jZXMKfQoKZnVuYyBnZW5lcmF0ZVRyYW5zYWN0aW9ucyhhY2NvdW50cyBbXUFjY291bnRJbmZvLCBuIGludCwgYWNjb3VudEFtb3VudHMgbWFwW3N0cmluZ11mbG9hdDY0KSBbXSpUcmFuc2FjdGlvbiB7Cgl0eHMgOj0gbWFrZShbXSpUcmFuc2FjdGlvbiwgMCwgbikKCWJhbGFuY2VzIDo9IG1hcHNDbG9uZShhY2NvdW50QW1vdW50cykKCWZvciBpIDo9IDA7IGkgPCBuOyBpKysgewoJCWFjYyA6PSBhY2NvdW50c1tyYW5kLkludG4obGVuKGFjY291bnRzKSldCgkJYW1vdW50IDo9IHJhbmRGbG9hdChtaW5UcmFuc2FjdGlvbkFtb3VudCwgbWF4VHJhbnNhY3Rpb25BbW91bnQpCgkJdHhUeXBlIDo9IHRyYW5zYWN0aW9uVHlwZXNbcmFuZC5JbnRuKGxlbih0cmFuc2FjdGlvblR5cGVzKSldCgkJbmV3QmFsIDo9IGJhbGFuY2VzW2FjYy5JRF0KCQlzdGF0dXMgOj0gIkFQUFJPVkVEIgoJCXN3aXRjaCB0eFR5cGUgewoJCWNhc2UgIkNSRURJVCI6CgkJCW5ld0JhbCArPSBhbW91bnQKCQljYXNlICJERUJJVCI6CgkJCW5ld0JhbCAtPSBhbW91bnQKCQl9CgkJaWYgbmV3QmFsIDwgMCB7CgkJCXN0YXR1cyA9ICJSRUpFQ1RFRCIKCQkJbmV3QmFsID0gYmFsYW5jZXNbYWNjLklEXQoJCX0gZWxzZSB7CgkJCWJhbGFuY2VzW2FjYy5JRF0gPSBuZXdCYWwKCQl9CgkJdHhzID0gYXBwZW5kKHR4cywgJlRyYW5zYWN0aW9uewoJCQlUcmFuc2FjdGlvbklEOiAgdXVpZC5OZXcoKS5TdHJpbmcoKSwKCQkJVHlwZTogICAgICAgICAgIHR4VHlwZSwKCQkJQW1vdW50OiAgICAgICAgIGFtb3VudCwKCQkJQ3VycmVuY3k6ICAgICAgIGN1cnJlbmN5LAoJCQlTdGF0dXM6ICAgICAgICAgc3RhdHVzLAoJCQlBY2NvdW50SUQ6ICAgICAgYWNjLklELAoJCQlPd25lcklEOiAgICAgICAgYWNjLk93bmVySUQsCgkJCUNyZWF0ZWRBdDogICAgICBhY2MuQ3JlYXRlZEF0LAoJCQlBY2NvdW50U3RhdHVzOiAgYWNjb3VudFN0YXR1c2VzWzBdLAoJCQlBY2NvdW50QmFsYW5jZTogbmV3QmFsLAoJCQlUaW1lc3RhbXA6ICAgICAgdGltZS5Ob3coKS5Vbml4TWljcm8oKSwKCQl9KQoJfQoJbWFwc0NvcHkoYmFsYW5jZXMsIGFjY291bnRBbW91bnRzKQoJcmV0dXJuIHR4cwp9CgpmdW5jIHJhbmRGbG9hdChtaW4sIG1heCBpbnQpIGZsb2F0NjQgewoJcmV0dXJuIGZsb2F0NjQocmFuZC5JbnRuKChtYXgtbWluKzEpKjEwMCkrbWluKjEwMCkgLyAxMDAuMAp9CgpmdW5jIG1hcHNDbG9uZShtIG1hcFtzdHJpbmddZmxvYXQ2NCkgbWFwW3N0cmluZ11mbG9hdDY0IHsKCWMgOj0gbWFrZShtYXBbc3RyaW5nXWZsb2F0NjQsIGxlbihtKSkKCWZvciBrLCB2IDo9IHJhbmdlIG0gewoJCWNba10gPSB2Cgl9CglyZXR1cm4gYwp9CgpmdW5jIG1hcHNDb3B5KHNyYywgZHN0IG1hcFtzdHJpbmddZmxvYXQ2NCkgewoJZm9yIGssIHYgOj0gcmFuZ2Ugc3JjIHsKCQlkc3Rba10gPSB2Cgl9Cn0KCmZ1bmMgc2VuZEFsbEJhdGNoZXMoY3R4IGNvbnRleHQuQ29udGV4dCwgc3FzQ2xpZW50ICpzcXMuQ2xpZW50LCBxdWV1ZVVybCBzdHJpbmcsIHR4cyBbXSpUcmFuc2FjdGlvbikgaW50IHsKCXNlbnQgOj0gMAoJZm9yIGkgOj0gMDsgaSA8IGxlbih0eHMpOyBpICs9IGJhdGNoU2l6ZSB7CgkJZW5kIDo9IG1pbihpK2JhdGNoU2l6ZSwgbGVuKHR4cykpCgkJYmF0Y2ggOj0gdHhzW2k6ZW5kXQoJCWlmIGVyciA6PSBzZW5kQmF0Y2goY3R4LCBzcXNDbGllbnQsIHF1ZXVlVXJsLCBiYXRjaCk7IGVyciAhPSBuaWwgewoJCQlsb2cuRmF0YWxmKCJbRVJST1JdIEZhaWxlZCB0byBzZW5kIG1lc3NhZ2UgYmF0Y2ggdG8gU1FTOiAldiIsIGVycikKCQl9CgkJc2VudCArPSBsZW4oYmF0Y2gpCgl9CglyZXR1cm4gc2VudAp9CgpmdW5jIHByaW50UXVldWVTdGF0cyhjdHggY29udGV4dC5Db250ZXh0LCBzcXNDbGllbnQgKnNxcy5DbGllbnQsIHF1ZXVlVXJsIHN0cmluZykgewoJYXR0cnNPdXQsIGVyciA6PSBzcXNDbGllbnQuR2V0UXVldWVBdHRyaWJ1dGVzKGN0eCwgJnNxcy5HZXRRdWV1ZUF0dHJpYnV0ZXNJbnB1dHsKCQlRdWV1ZVVybDogICAgICAgYXdzLlN0cmluZyhxdWV1ZVVybCksCgkJQXR0cmlidXRlTmFtZXM6IFtddHlwZXMuUXVldWVBdHRyaWJ1dGVOYW1leyJBbGwifSwKCX0pCglpZiBlcnIgIT0gbmlsIHsKCQlsb2cuUHJpbnRmKCJbV0FSTl0gQ291bGQgbm90IGdldCBxdWV1ZSBhdHRyaWJ1dGVzOiAldiIsIGVycikKCQlyZXR1cm4KCX0KCWxvZy5QcmludGYoIltTUVMgU3RhdHNdIEF0dHJpYnV0ZXMgZm9yIHF1ZXVlICclcyc6IiwgcXVldWVOYW1lKQoJZm9yIGssIHYgOj0gcmFuZ2UgYXR0cnNPdXQuQXR0cmlidXRlcyB7CgkJbG9nLlByaW50ZigiICAlczogJXMiLCBrLCB2KQoJfQp9CgpmdW5jIHNlbmRCYXRjaChjdHggY29udGV4dC5Db250ZXh0LCBjbGllbnQgKnNxcy5DbGllbnQsIHF1ZXVlVXJsIHN0cmluZywgdHhzIFtdKlRyYW5zYWN0aW9uKSBlcnJvciB7CgllbnRyaWVzIDo9IG1ha2UoW110eXBlcy5TZW5kTWVzc2FnZUJhdGNoUmVxdWVzdEVudHJ5LCBsZW4odHhzKSkKCWZvciBpLCB0eCA6PSByYW5nZSB0eHMgewoJCWJvZHkgOj0gZm10LlNwcmludGYoCgkJCWB7InRyYW5zYWN0aW9uIjp7ImlkIjoiJXMiLCJ0eXBlIjoiJXMiLCJhbW91bnQiOiUuMmYsImN1cnJlbmN5IjoiJXMiLCJzdGF0dXMiOiIlcyIsInRpbWVzdGFtcCI6JWR9LCJhY2NvdW50Ijp7ImlkIjoiJXMiLCJvd25lciI6IiVzIiwiY3JlYXRlZF9hdCI6IiVkIiwic3RhdHVzIjoiJXMiLCJiYWxhbmNlIjp7ImFtb3VudCI6JS4yZiwiY3VycmVuY3kiOiIlcyJ9fX1gLAoJCQl0eC5UcmFuc2FjdGlvbklELCB0eC5UeXBlLCB0eC5BbW91bnQsIHR4LkN1cnJlbmN5LCB0eC5TdGF0dXMsIHR4LlRpbWVzdGFtcCwKCQkJdHguQWNjb3VudElELCB0eC5Pd25lcklELCB0eC5DcmVhdGVkQXQsIHR4LkFjY291bnRTdGF0dXMsIHR4LkFjY291bnRCYWxhbmNlLCB0eC5DdXJyZW5jeSwKCQkpCgkJZW50cmllc1tpXSA9IHR5cGVzLlNlbmRNZXNzYWdlQmF0Y2hSZXF1ZXN0RW50cnl7CgkJCUlkOiAgICAgICAgICBhd3MuU3RyaW5nKGZtdC5TcHJpbnRmKCJtc2ctJWQiLCBpKSksCgkJCU1lc3NhZ2VCb2R5OiBhd3MuU3RyaW5nKGJvZHkpLAoJCQlNZXNzYWdlQXR0cmlidXRlczogbWFwW3N0cmluZ110eXBlcy5NZXNzYWdlQXR0cmlidXRlVmFsdWV7CgkJCQljb250ZW50VHlwZUtleTogewoJCQkJCURhdGFUeXBlOiAgICBhd3MuU3RyaW5nKCJTdHJpbmciKSwKCQkJCQlTdHJpbmdWYWx1ZTogYXdzLlN0cmluZyhjb250ZW50VHlwZVZhbCksCgkJCQl9LAoJCQl9LAoJCX0KCX0KCV8sIGVyciA6PSBjbGllbnQuU2VuZE1lc3NhZ2VCYXRjaChjdHgsICZzcXMuU2VuZE1lc3NhZ2VCYXRjaElucHV0ewoJCVF1ZXVlVXJsOiBhd3MuU3RyaW5nKHF1ZXVlVXJsKSwKCQlFbnRyaWVzOiAgZW50cmllcywKCX0pCglyZXR1cm4gZXJyCn0KCnR5cGUgY3VzdG9tU1FTRW5kcG9pbnRSZXNvbHZlciBzdHJ1Y3R7fQoKZnVuYyAociAqY3VzdG9tU1FTRW5kcG9pbnRSZXNvbHZlcikgUmVzb2x2ZUVuZHBvaW50KGN0eCBjb250ZXh0LkNvbnRleHQsIHBhcmFtcyBzcXMuRW5kcG9pbnRQYXJhbWV0ZXJzKSAoc21pdGh5ZW5kcG9pbnRzLkVuZHBvaW50LCBlcnJvcikgewoJdSwgZXJyIDo9IHVybC5QYXJzZShsb2NhbHN0YWNrRW5kcG9pbnQpCglpZiBlcnIgIT0gbmlsIHsKCQlyZXR1cm4gc21pdGh5ZW5kcG9pbnRzLkVuZHBvaW50e30sIGVycgoJfQoJdmFyIHByb3BzIHNtaXRoeS5Qcm9wZXJ0aWVzCglwcm9wcy5TZXQoImF1dGhTaWduaW5nUmVnaW9uIiwgYXdzUmVnaW9uKQoJcmV0dXJuIHNtaXRoeWVuZHBvaW50cy5FbmRwb2ludHsKCQlVUkk6ICAgICAgICAqdSwKCQlQcm9wZXJ0aWVzOiBwcm9wcywKCX0sIG5pbAp9CgpmdW5jIG1haW4oKSB7CglzdGFydCA6PSB0aW1lLk5vdygpCgljdHggOj0gY29udGV4dC5CYWNrZ3JvdW5kKCkKCglzcXNDbGllbnQsIHF1ZXVlVXJsIDo9IHNldHVwU1FTKGN0eCkKCglhY2NvdW50cywgYWNjb3VudEFtb3VudHMgOj0gZ2VuZXJhdGVBY2NvdW50cygpCgl0eHMgOj0gZ2VuZXJhdGVUcmFuc2FjdGlvbnMoYWNjb3VudHMsIHRvdGFsTWVzc2FnZXMsIGFjY291bnRBbW91bnRzKQoKCWxvZy5QcmludGYoIltJTkZPXSBTZW5kaW5nICVkIG1lc3NhZ2VzIHRvIFNRUyBxdWV1ZSAnJXMnIiwgdG90YWxNZXNzYWdlcywgcXVldWVOYW1lKQoJc2VudCA6PSBzZW5kQWxsQmF0Y2hlcyhjdHgsIHNxc0NsaWVudCwgcXVldWVVcmwsIHR4cykKCglsb2cuUHJpbnRmKCJbSU5GT10gRG9uZS4gU2VudCAlZCBtZXNzYWdlcyB0byBTUVMgcXVldWUgJyVzJyIsIHNlbnQsIHF1ZXVlTmFtZSkKCWxvZy5QcmludGYoIltJTkZPXSBUb3RhbCBleGVjdXRpb24gdGltZTogJWQgbXMiLCB0aW1lLlNpbmNlKHN0YXJ0KS5NaWxsaXNlY29uZHMoKSkKCglwcmludFF1ZXVlU3RhdHMoY3R4LCBzcXNDbGllbnQsIHF1ZXVlVXJsKQp9Cg==" | base64 -d > message-generator.go &&
+        go clean -modcache &&
+        go mod init message-generator &&
+        go mod tidy &&
+        go mod download &&
+        go run message-generator.go
+      "
+    working_dir: /home
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: saldo_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d saldo_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  ingestor:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    container_name: ingestor
+    depends_on:
+      localstack:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/saldo_db
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      AWS_SQS_ENDPOINT: http://localstack:4566
+      AWS_SQS_REGION: sa-east-1
+      AWS_SQS_ACCESS_KEY: test
+      AWS_SQS_SECRET_KEY: test
+      AWS_SQS_QUEUE_NAME: transacoes-financeiras-processadas
+    ports:
+      - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8082/actuator/health | grep -q '\\\"status\\\":\\\"UP\\\"' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/saldo_db
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      APP_TIMEZONE: America/Sao_Paulo
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health | grep -q '\\\"status\\\":\\\"UP\\\"' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  postgres_data:

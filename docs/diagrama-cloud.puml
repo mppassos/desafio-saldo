@@ -1,0 +1,64 @@
+@startuml diagrama-cloud
+' ============================================================================
+' Diagrama de deploy em cloud pública (AWS) — proposta
+' Renderize localmente (VS Code + PlantUML) ou use o servidor PlantUML.
+' ============================================================================
+title Deploy em Cloud (AWS) — API de Consulta de Saldo
+
+actor Cliente as "Cliente\n(aplicativo móvel/web)"
+actor Autorizador as "Autorizador de\ntransações (sistema externo)"
+
+package "AWS Cloud" {
+  package "Camada de entrada" {
+    [API Gateway] as AG
+    [WAF] as WAF
+  }
+
+  package "Camada de aplicação (VPC)" {
+    [Application Load Balancer] as ALB
+    [ECS Fargate - api (réplicas)] as ECS_API
+    [ECS Fargate - ingestor (réplicas)] as ECS_ING
+  }
+
+  package "Camada de dados" {
+    database "RDS PostgreSQL\n(Multi-AZ)" as RDS
+    [ElastiCache Redis\n(cache opcional)] as REDIS
+  }
+
+  package "Messaging" {
+    queue "SQS\ntransacoes-financeiras-processadas" as SQS
+    queue "DLQ\ntransacoes-financeiras-processadas-dlq" as DLQ
+  }
+
+  package "Observabilidade" {
+    [CloudWatch\n(logs, métricas, alarmes)] as CW
+    [Prometheus + Grafana] as PRM
+    [S3\n(artefatos, backups)] as S3
+  }
+}
+
+Cliente --> AG : HTTPS
+AG --> WAF
+WAF --> ALB
+ALB --> ECS_API : health checks /actuator/health
+
+Autorizador --> SQS : publica transações
+SQS --> ECS_ING : long polling (batch 10)
+SQS --> DLQ : RedrivePolicy (maxReceiveCount=5)
+ECS_ING --> RDS : upsert atômico (last-write-wins)
+ECS_API --> RDS : leitura por PK
+ECS_API --> REDIS : cache de saldo (opcional)
+
+ECS_API --> CW : logs/métricas
+ECS_ING --> CW : logs/métricas
+CW --> PRM : scrape
+ECS_API --> S3 : backups (RDS) / artefatos
+ECS_ING --> S3
+
+legend right
+  **Estratégia de deploy:** Blue/Green via CodeDeploy
+  **Rollback:** automático se health checks falharem
+  **Escala:** ECS Service Auto Scaling por métricas (CPU/mensagens na fila)
+endlegend
+
+@enduml
