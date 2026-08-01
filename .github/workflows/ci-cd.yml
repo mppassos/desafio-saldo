@@ -8,10 +8,12 @@
 #                       runner Ubuntu, que tem Docker nativo)
 #
 # CD (proposta Blue/Green):
-#   deploy           -> só no push para main, após CI verde, E quando as
-#                       credenciais AWS estiverem configuradas nos Secrets.
-#                       Sem secrets, o job é PULADO (não falha) — a proposta
-#                       fica documentada no README/ADR e o pipeline fica verde.
+#   deploy           -> só no push para main, após CI verde.
+#                       As credenciais AWS são verificadas DENTRO do job
+#                       (o contexto `secrets` não pode ser usado no `if` de
+#                       nível de job). Sem secrets, os passos do deploy são
+#                       pulados e o job termina verde — a proposta fica
+#                       documentada no README/ADR.
 # ============================================================================
 name: CI/CD Pipeline
 
@@ -74,19 +76,25 @@ jobs:
     name: Deploy Blue/Green (proposta)
     runs-on: ubuntu-latest
     needs: [build, unit-tests, integration-tests]
-    # Só roda no push para main e quando as credenciais AWS existirem nos
-    # Secrets do repositório. Sem secrets o job é pulado ( status "skipped",
-    # pipeline continua verde) — a proposta está documentada no README/ADR.
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      github.event_name == 'push' &&
-      secrets.AWS_ACCESS_KEY_ID != '' &&
-      secrets.AWS_SECRET_ACCESS_KEY != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
     steps:
-      - uses: actions/checkout@v5
+      # O contexto `secrets` NÃO pode ser usado no `if` de nível de job;
+      # por isso a verificação é feita aqui, dentro de um passo.
+      - name: Verificar credenciais AWS
+        id: aws-check
+        run: |
+          if [[ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" || -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]]; then
+            echo "Credenciais AWS não configuradas — deploy Blue/Green PULADO."
+            echo "A proposta está documentada no README e no ADR 004."
+            echo "aws_configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Credenciais AWS encontradas — seguindo com o deploy."
+            echo "aws_configured=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configurar credenciais AWS
+        if: steps.aws-check.outputs.aws_configured == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -94,6 +102,7 @@ jobs:
           aws-region: sa-east-1
 
       - name: Build e push da imagem (ECR)
+        if: steps.aws-check.outputs.aws_configured == 'true'
         run: |
           echo "==> Login no ECR..."
           # aws ecr get-login-password | docker login --username AWS --password-stdin $ECR_REGISTRY
@@ -103,6 +112,7 @@ jobs:
           # docker push $ECR_REGISTRY/$ECR_REPO:${GITHUB_SHA::7}
 
       - name: Deploy Blue/Green com CodeDeploy
+        if: steps.aws-check.outputs.aws_configured == 'true'
         run: |
           echo "==> Criando revisão no CodeDeploy (deployment group Blue/Green)..."
           # aws deploy create-deployment \
