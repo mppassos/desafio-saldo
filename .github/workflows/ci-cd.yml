@@ -75,7 +75,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, unit-tests, integration-tests]
     # Só roda no push para main e quando as credenciais AWS existirem nos
-    # Secrets do repositório. Sem secrets o job é pulado (status "skipped",
+    # Secrets do repositório. Sem secrets o job é pulado ( status "skipped",
     # pipeline continua verde) — a proposta está documentada no README/ADR.
     if: >-
       github.ref == 'refs/heads/main' &&
