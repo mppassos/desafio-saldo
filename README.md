@@ -235,14 +235,6 @@ gradual e **rollback automático** se os health checks falharem.
 3. Commit: `git commit -m 'Adiciona nova feature'`;
 4. Push e abra um Pull Request.
 
-## 📬 Contato
-
-Desafio técnico — Itaú Unibanco:
-- edinei.silva@itau-unibanco.com.br
-- caio.sanchez@itau-unibanco.com.br
-- viviani.cruz@itau-unibanco.com.br
-- frank.volpe@itau-unibanco.com.br
-
 ## 📄 Licença
 
 Projeto desenvolvido exclusivamente para fins do desafio técnico do Itaú Unibanco.
