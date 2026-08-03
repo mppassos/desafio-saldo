@@ -113,7 +113,106 @@ cd ingestor && mvn spring-boot:run        # consome a fila
 cd api && mvn spring-boot:run             # http://localhost:8080
 ```
 
-## 🔍 Testando a API
+## 4. TESTANDO A API
+
+### 4.1 Pegue um accountId real
+
+Via SQS (aws cli):
+
+```bash
+export AWS_DEFAULT_REGION=sa-east-1 AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test
+aws --endpoint-url http://localhost:4566 sqs receive-message \
+    --queue-url http://localhost:4566/000000000000/transacoes-financeiras-processadas \
+    --max-number-of-messages 1
+```
+
+→ anote o "account": { "id": "...uuid..." } da mensagem.
+
+Ou direto no banco:
+
+```bash
+docker exec -it postgres psql -U admin -d saldo_db -c \
+  "SELECT account_id, amount, updated_at FROM balances ORDER BY updated_at DESC LIMIT 5;"
+```
+
+### 4.2 curl (qualquer terminal)
+
+```bash
+# 200 — saldo encontrado
+curl http://localhost:8080/api/v1/balances/<COLE_AQUI_O_UUID>
+
+# 404 — conta inexistente
+curl http://localhost:8080/api/v1/balances/00000000-0000-0000-0000-000000000001
+
+# 400 — UUID inválido
+curl http://localhost:8080/api/v1/balances/nao-e-um-uuid
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "5b19c8b6-0cc4-4c72-a989-0c2ee15fa975",
+  "owner": "315e3cfe-f4af-4cd2-b298-a449e614349a",
+  "balance": { "amount": 183.12, "currency": "BRL" },
+  "updated_at": "2025-07-05T18:04:13.433-03:00"
+}
+```
+
+### 4.3 VSCode (extensão REST Client)
+
+- Instale a extensão REST Client (marketplace).
+- Abra o arquivo requests.http (raiz do projeto).
+- Clique em "Send Request" (o link azul acima de cada requisição).
+- Edite o UUID do primeiro GET para um accountId real da seção 4.1.
+
+### 4.4 Postman
+
+- Import → Raw text e cole o comando curl da seção 4.2 (o Postman converte automaticamente em requisição).
+- Ou crie manualmente: GET http://localhost:8080/api/v1/balances/{accountId}, aba Headers: Accept: application/json.
+
+### 4.5 Swagger UI (documentação interativa)
+
+Abra no navegador: http://localhost:8080/swagger-ui.html → expanda o endpoint GET /api/v1/balances/{accountId} → Try it out.
+
+### 4.6 Health checks e métricas
+
+| URL | O que mostra |
+|---|---|
+| http://localhost:8080/actuator/health | API saudável? ("status":"UP") |
+| http://localhost:8082/actuator/health | Ingestor saudável? |
+| http://localhost:8080/actuator/prometheus | métricas (ingestor_messages_applied_total etc.) |
+
+## 5. VERIFICANDO NO BANCO (opcional)
+
+```bash
+docker exec -it postgres psql -U admin -d saldo_db
+```
+
+```sql
+-- quantas contas já têm saldo?
+SELECT count(*) FROM balances;
+
+-- as 10 atualizações mais recentes
+SELECT account_id, amount, updated_at FROM balances ORDER BY updated_at DESC LIMIT 10;
+
+-- idempotência: quantas transações já processadas
+SELECT count(*) FROM processed_transactions;
+```
+
+## 6. RODANDO OS TESTES
+
+```bash
+cd "/desafio-saldo"
+
+# Testes unitários (rápidos, sem Docker)
+mvn test -Dgroups=unit
+
+# Testes de integração (Testcontainers — PRECISA do Docker rodando)
+mvn test -Dgroups=integration
+```
+
+## 🔍 Testando a API (resumo)
 
 ```bash
 curl http://localhost:8080/api/v1/balances/5b19c8b6-0cc4-4c72-a989-0c2ee15fa975
